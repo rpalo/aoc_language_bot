@@ -125,4 +125,7 @@ before contributing or opening an issue.
 
 ## Development Notes
 
-None yet.  So far works as planned.
+If someone makes two different language submissions in the same comment,
+it will currently not be detected.  The auto finder should be extended
+to compare all of the code blocks in the comment and do a hashset of
+all of the languages included.

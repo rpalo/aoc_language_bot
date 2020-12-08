@@ -9,21 +9,29 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
+
 def get_article_ids(urls, history):
+    """Given a list of regular copy/pasted web URLs to posts,
+    pings the API to get the article_id of each for the comment queries.
+    Uses the cache if possible.
+
+    NOTE: the order of the URLs in the file is important, as it drives
+    which article is specified for which Day of the challenge.
+    """ 
     for day, url in enumerate(urls, start=1):
         if url in history:
             continue
-        time.sleep(1)
+
+        time.sleep(1)  # Be a good citizen
         protocol, domain, user_slug = url.partition("dev.to/")
         api_url = protocol + domain + "api/articles/" + user_slug
-        # print(api_url)
         result = requests.get(api_url)
+
         if result.status_code != 200:
             print(f"Couldn't get {url} ID.", file=sys.stderr)
             continue
-        # print(result.text)
         data = result.json()
-        # print(data)
+        
         history[url] = {
             "id": data["id"],
             "title": data["title"],
@@ -33,6 +41,10 @@ def get_article_ids(urls, history):
 
 
 def get_user_decision(soup, code_block):
+    """Gets user input on a comment it's not able to classify.
+    
+    Separate multiple languages in a single post with a '/'.
+    """
     print("Need input.", soup.prettify(), sep="\n")
     while True:
         language = input("Language (<Enter> for None): ") or "None"
@@ -42,6 +54,10 @@ def get_user_decision(soup, code_block):
 
 
 def parse_comment(comment):
+    """Parses a comment's HTML looking for a highlighted `pre` tag.
+    
+    `comment` is a dict from DEV's comment API.
+    """
     soup = BeautifulSoup(comment["body_html"], "html.parser")
     code_block = soup.find("pre", class_="highlight")
 
@@ -52,7 +68,12 @@ def parse_comment(comment):
     else:
         return get_user_decision(soup, code_block)
 
+
 def fetch_comments(article):
+    """Get all the comments for an article and process their languages.
+    Use the cache if possible.  A comment can have more than one 
+    language associated with it.
+    """
     result = requests.get("https://dev.to/api/comments",
                             params={"a_id": article["id"]})
     if result.status_code != 200:
@@ -68,6 +89,15 @@ def fetch_comments(article):
 
 
 def fetch(config):
+    """Fetch Subcommand.  Download and process all new comments.
+
+    Config has a few options:
+    - history_file: the file to get the cache out of and save it 
+                    back into.  Defaults to `aoc_language_bot_history.json`.
+    - url_file: the file to get the list of article URLs from.  Defaults
+                to `urls.txt`.
+    - delete: boolean flag.  If true, blows away the current database.
+    """
     try:
         with open(config.history_file, "r") as hf:
             history = json.load(hf)
@@ -83,7 +113,7 @@ def fetch(config):
     get_article_ids(urls, history)
 
     for article in history.values():
-        time.sleep(1)
+        time.sleep(1)  # Good citizen award
         fetch_comments(article)
 
     with open(config.history_file, "w") as hf:
@@ -91,6 +121,7 @@ def fetch(config):
 
 
 def show_markdown(article, aliases):
+    """Output the markdown "updated at" time and table for that day."""
     now = datetime.now()
     print(f"Updated {now.strftime('%I:%M%p %m/%d/%Y')} PST.\n")
 
@@ -106,6 +137,18 @@ def show_markdown(article, aliases):
         print(f"| {language:10} | {count:5} |")
 
 def show(config):
+    """Show Subcommand.  Output Markdown for copy/paste tallying the
+    langs.
+
+    Config has a few options:
+    - day: the integer number of the day to output (1-25 inclusive).
+    - history_file: the file to get the cache out of and save it 
+                    back into.  Defaults to `aoc_language_bot_history.json`.
+    - url_file: the file to get the list of article URLs from.  Defaults
+                to `urls.txt`.
+    - alias_file: A file of key/values for replacements for common
+                  misspellings.  Defaults to `aliases.json`.
+    """
     with open(config.history_file, "r") as hf:
         history = json.load(hf)
 
@@ -150,7 +193,11 @@ def main():
     show_parser.set_defaults(func=show)
 
     args = parser.parse_args()
-    args.func(args)
+
+    try:
+        args.func(args)
+    except AttributeError:
+        parser.parse_args(["-h"])
 
 if __name__ == "__main__":
     main()
