@@ -2,12 +2,15 @@ import argparse
 from collections import Counter
 from itertools import chain
 import json
+import logging
 import sys
 from datetime import datetime
 import time
 
 import requests
 from bs4 import BeautifulSoup
+
+logging.basicConfig(level=logging.INFO)
 
 
 def get_article_ids(urls, history):
@@ -20,6 +23,7 @@ def get_article_ids(urls, history):
     """ 
     for day, url in enumerate(urls, start=1):
         if url in history:
+            logging.info(f"Using day {day} from cache.")
             continue
 
         time.sleep(1)  # Be a good citizen
@@ -28,10 +32,10 @@ def get_article_ids(urls, history):
         result = requests.get(api_url)
 
         if result.status_code != 200:
-            print(f"Couldn't get {url} ID.", file=sys.stderr)
+            logging.error(f"Couldn't get {api_url}.")
             continue
         data = result.json()
-        
+        logging.info(f"Retreived day {day} from the API.")
         history[url] = {
             "id": data["id"],
             "title": data["title"],
@@ -102,9 +106,11 @@ def fetch(config):
         with open(config.history_file, "r") as hf:
             history = json.load(hf)
     except FileNotFoundError:
+        logging.warning("No history file found.  Creating a new one.")
         history = {}
 
     if config.delete:
+        logging.info("Cleared history.")
         history = {}
     
     with open(config.url_file, "r") as uf:
@@ -114,9 +120,11 @@ def fetch(config):
 
     for article in history.values():
         time.sleep(1)  # Good citizen award
+        logging.info(f"Fetching comments for day {article['day']}.")
         fetch_comments(article)
 
     with open(config.history_file, "w") as hf:
+        logging.info("Saving history file.")
         json.dump(history, hf, indent=2)
 
 
@@ -149,21 +157,27 @@ def show(config):
     - alias_file: A file of key/values for replacements for common
                   misspellings.  Defaults to `aliases.json`.
     """
-    with open(config.history_file, "r") as hf:
-        history = json.load(hf)
+    try:
+        with open(config.history_file, "r") as hf:
+            history = json.load(hf)
+    except FileNotFoundError:
+        logging.error("No history file found.")
+        exit(1)
 
     try:
         with open(config.alias_file, "r") as af:
             aliases = json.load(af)
     except FileNotFoundError:
+        logging.warning("No aliases file found.  Using an empty one."
+                        "  Create 'aliases.json' in your directory if desired.")
         aliases = dict()
 
     for article in history.values():
         if article["day"] == config.day:
             show_markdown(article, aliases)
             break
-        else:
-            print("Couldn't find that day.")
+    else:
+        logging.error(f"Couldn't find {config.day}.")
 
 
 def main():
